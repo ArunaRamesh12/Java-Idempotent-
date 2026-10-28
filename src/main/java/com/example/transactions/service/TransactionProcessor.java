@@ -8,6 +8,8 @@ import org.springframework.stereotype.Service;
 import java.math.BigDecimal;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
@@ -15,6 +17,7 @@ import java.util.stream.Collectors;
 public class TransactionProcessor {
     private static final Logger log = LoggerFactory.getLogger(TransactionProcessor.class);
     private static final int MAX_ATTEMPTS = 3;
+    private final ExecutorService executor = Executors.newSingleThreadExecutor();
 
     private final Map<String, TransactionResult> outcomesByTransactionId = new ConcurrentHashMap<>();
     private final Map<String, TransactionResult> outcomesByRequestId = new ConcurrentHashMap<>();
@@ -25,15 +28,33 @@ public class TransactionProcessor {
     private final Set<String> transientFailureAlreadyUsed = ConcurrentHashMap.newKeySet();
     private final AtomicInteger received = new AtomicInteger();
 
-    public synchronized List<TransactionResult> submitBatch(List<TransactionRequest> requests) {
-        List<TransactionResult> results = new ArrayList<>();
-        for (TransactionRequest request : requests) {
-            received.incrementAndGet();
-            results.add(submitOne(request));
-        }
-        drainAllPending();
-        return results;
+    public List<TransactionResult> submitBatch(List<TransactionRequest> requests) {
+    if (requests == null) {
+        throw new IllegalArgumentException("Requests cannot be null");
     }
+
+    List<TransactionResult> results = new ArrayList<>();
+
+    for (TransactionRequest request : requests) {
+        if (request == null) {
+            throw new IllegalArgumentException("Transaction cannot be null");
+        }
+
+        received.incrementAndGet();
+
+        results.add(new TransactionResult(
+                request.transactionId(),
+                request.requestId(),
+                TransactionStatus.RECEIVED,
+                0,
+                "Accepted for background processing"
+        ));
+
+        executor.submit(() -> submitOne(request));
+    }
+
+    return results;
+}
 
     public synchronized TransactionResult submitOne(TransactionRequest request) {
         if (!valid(request)) {

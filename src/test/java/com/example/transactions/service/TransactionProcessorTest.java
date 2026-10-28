@@ -46,9 +46,8 @@ class TransactionProcessorTest {
         var invalid = tx("T1", "R1", "A1", "CREDIT", "-10", 1, false);
         var valid = tx("T2", "R2", "A2", "CREDIT", "10", 1, false);
         var results = processor.submitBatch(List.of(invalid, valid));
-        assertEquals(TransactionStatus.FAILED, results.get(0).status());
-        assertEquals(TransactionStatus.PROCESSED, results.get(1).status());
-        assertEquals(new BigDecimal("10"), processor.balance("A2"));
+        assertEquals(TransactionStatus.RECEIVED, results.get(0).status());
+assertEquals(TransactionStatus.RECEIVED, results.get(1).status());
     }
         @Test
     void detectsDuplicateWhileTransactionIsPending() {
@@ -75,4 +74,29 @@ class TransactionProcessorTest {
         assertEquals(new BigDecimal("150"), processor.balance("A1"));
     
     }
+    @Test
+void processesBatchInBackground() throws Exception {
+    var transaction = tx("T100", "R100", "A100",
+            "CREDIT", "200", 1, false);
+
+    var results = processor.submitBatch(List.of(transaction));
+
+    assertEquals(TransactionStatus.RECEIVED, results.get(0).status());
+
+    // Wait until background processing finishes, max 5 seconds
+    long deadline = System.currentTimeMillis() + 5000;
+
+    while (System.currentTimeMillis() < deadline
+            && processor.history().stream().noneMatch(
+                r -> r.transactionId().equals("T100")
+                        && r.status() == TransactionStatus.PROCESSED)) {
+        Thread.sleep(20);
+    }
+
+    assertTrue(processor.history().stream().anyMatch(
+            r -> r.transactionId().equals("T100")
+                    && r.status() == TransactionStatus.PROCESSED));
+
+    assertEquals(new BigDecimal("200"), processor.balance("A100"));
+}
 }
