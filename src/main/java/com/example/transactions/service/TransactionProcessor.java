@@ -49,6 +49,15 @@ public class TransactionProcessor {
             return recordDuplicate(request, "requestId already seen");
         }
 
+   boolean alreadyPending = pendingByAccountAndSequence.values()
+        .stream()
+        .anyMatch(p -> p.transactionId().equals(request.transactionId())
+                || p.requestId().equals(request.requestId()));
+
+if (alreadyPending) {
+    return recordDuplicate(request, "Transaction already pending");
+}
+   
         TransactionResult existing = outcomesByTransactionId.get(request.transactionId());
         if (existing != null) {
             TransactionResult duplicate = recordDuplicate(request, "transactionId already processed or registered");

@@ -50,4 +50,29 @@ class TransactionProcessorTest {
         assertEquals(TransactionStatus.PROCESSED, results.get(1).status());
         assertEquals(new BigDecimal("10"), processor.balance("A2"));
     }
+        @Test
+    void detectsDuplicateWhileTransactionIsPending() {
+        // Sequence 2 arrives before sequence 1
+        var first = processor.submitOne(
+                tx("T2", "R2", "A1", "CREDIT", "50", 2, false));
+
+        assertEquals(TransactionStatus.PENDING_SEQUENCE, first.status());
+
+        // Same transaction arrives again
+        var duplicate = processor.submitOne(
+                tx("T2", "R2", "A1", "CREDIT", "50", 2, false));
+
+        assertEquals(TransactionStatus.DUPLICATE, duplicate.status());
+
+        // Sequence 1 arrives
+        var seq1 = processor.submitOne(
+                tx("T1", "R1", "A1", "CREDIT", "100", 1, false));
+
+        assertEquals(TransactionStatus.PROCESSED, seq1.status());
+
+        // Pending transaction should execute only once
+    
+        assertEquals(new BigDecimal("150"), processor.balance("A1"));
+    
+    }
 }
