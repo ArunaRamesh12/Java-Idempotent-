@@ -4,6 +4,7 @@ import com.example.transactions.model.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import jakarta.annotation.PreDestroy;
 
 import java.math.BigDecimal;
 import java.util.*;
@@ -223,4 +224,8 @@ if (alreadyPending) {
     static class TransientProcessingException extends RuntimeException {
         TransientProcessingException(String message) { super(message); }
     }
+    @PreDestroy
+public void shutdown() {
+    executor.shutdown();
+}
 }
