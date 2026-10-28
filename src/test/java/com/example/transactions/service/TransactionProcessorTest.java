@@ -1,0 +1,53 @@
+package com.example.transactions.service;
+
+import com.example.transactions.model.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.math.BigDecimal;
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.*;
+
+class TransactionProcessorTest {
+    private TransactionProcessor processor;
+
+    @BeforeEach void setUp() { processor = new TransactionProcessor(); }
+
+    private TransactionRequest tx(String id, String req, String account, String type,
+                                  String amount, long sequence, boolean failOnce) {
+        return new TransactionRequest(id, req, account, type, new BigDecimal(amount), "USD", sequence, failOnce);
+    }
+
+    @Test void processesCreditAndDoesNotApplyDuplicateTwice() {
+        var first = processor.submitOne(tx("T1", "R1", "A1", "CREDIT", "100", 1, false));
+        var duplicate = processor.submitOne(tx("T1", "R1-replay", "A1", "CREDIT", "100", 1, false));
+        assertEquals(TransactionStatus.PROCESSED, first.status());
+        assertEquals(TransactionStatus.DUPLICATE, duplicate.status());
+        assertEquals(new BigDecimal("100"), processor.balance("A1"));
+    }
+
+    @Test void buffersOutOfOrderThenProcessesInSequence() {
+        var seq2 = processor.submitOne(tx("T2", "R2", "A1", "DEBIT", "40", 2, false));
+        assertEquals(TransactionStatus.PENDING_SEQUENCE, seq2.status());
+        var seq1 = processor.submitOne(tx("T1", "R1", "A1", "CREDIT", "100", 1, false));
+        assertEquals(TransactionStatus.PROCESSED, seq1.status());
+        assertEquals(new BigDecimal("60"), processor.balance("A1"));
+    }
+
+    @Test void retriesTransientFailureWithoutDuplicateEffect() {
+        var result = processor.submitOne(tx("T1", "R1", "A1", "CREDIT", "25", 1, true));
+        assertEquals(TransactionStatus.PROCESSED, result.status());
+        assertEquals(2, result.attempts());
+        assertEquals(new BigDecimal("25"), processor.balance("A1"));
+    }
+
+    @Test void rejectsInvalidNegativeAmountAndContinuesBatch() {
+        var invalid = tx("T1", "R1", "A1", "CREDIT", "-10", 1, false);
+        var valid = tx("T2", "R2", "A2", "CREDIT", "10", 1, false);
+        var results = processor.submitBatch(List.of(invalid, valid));
+        assertEquals(TransactionStatus.FAILED, results.get(0).status());
+        assertEquals(TransactionStatus.PROCESSED, results.get(1).status());
+        assertEquals(new BigDecimal("10"), processor.balance("A2"));
+    }
+}
